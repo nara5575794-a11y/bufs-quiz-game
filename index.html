@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BUFS 퀴즈 챌린지</title>
+    <style>
+        :root {
+            --primary-color: #0035ad; /* BUFS 공식 색상 느낌 */
+            --secondary-color: #fdb913;
+            --success-color: #28a745;
+            --error-color: #dc3545;
+            --bg-color: #f4f7f9;
+        }
+
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #game-container {
+            background: white;
+            width: 90%;
+            max-width: 500px;
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .hidden { display: none; }
+
+        h1 { color: var(--primary-color); margin-bottom: 1rem; }
+        
+        /* Progress & Score */
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            font-weight: bold;
+            color: #666;
+        }
+
+        /* Question & Options */
+        #question-text {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            min-height: 3.6rem;
+            word-break: keep-all;
+        }
+
+        .options-container {
+            display: grid;
+            gap: 10px;
+        }
+
+        .option-btn {
+            padding: 15px;
+            border: 2px solid #eee;
+            border-radius: 12px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 1rem;
+        }
+
+        .option-btn:hover { background-color: #f8f9fa; border-color: var(--primary-color); }
+        .option-btn.correct { background-color: var(--success-color) !important; color: white; border-color: var(--success-color); }
+        .option-btn.wrong { background-color: var(--error-color) !important; color: white; border-color: var(--error-color); }
+
+        /* Inputs & Buttons */
+        input[type="text"] {
+            width: 80%;
+            padding: 12px;
+            margin: 20px 0;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+
+        .main-btn {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        /* Ranking Board */
+        .ranking-list {
+            text-align: left;
+            margin: 20px auto;
+            max-width: 300px;
+            padding: 0;
+            list-style: none;
+        }
+
+        .ranking-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .ranking-item:last-child { border-bottom: none; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- 시작 화면 -->
+    <div id="start-screen">
+        <h1>BUFS Quiz</h1>
+        <p>부산외국어대학교 퀴즈 챌린지에<br>도전해보세요!</p>
+        <button class="main-btn" onclick="startGame()">게임 시작</button>
+    </div>
+
+    <!-- 퀴즈 화면 -->
+    <div id="quiz-screen" class="hidden">
+        <div class="status-bar">
+            <span id="progress">1/10</span>
+            <span id="current-score">점수: 0</span>
+        </div>
+        <div id="question-text">질문이 여기에 표시됩니다.</div>
+        <div class="options-container" id="options">
+            <!-- 보기 버튼들 -->
+        </div>
+    </div>
+
+    <!-- 결과 화면 -->
+    <div id="result-screen" class="hidden">
+        <h1>게임 종료!</h1>
+        <p>최종 점수: <span id="final-score">0</span>점</p>
+        <input type="text" id="nickname" placeholder="닉네임을 입력하세요 (최대 8자)" maxlength="8">
+        <br>
+        <button class="main-btn" id="save-btn">기록 저장 및 랭킹 보기</button>
+    </div>
+
+    <!-- 랭킹 화면 -->
+    <div id="ranking-screen" class="hidden">
+        <h2>Top 5 랭킹</h2>
+        <ul class="ranking-list" id="ranking-list">
+            <!-- 랭킹 아이템 -->
+        </ul>
+        <button class="main-btn" onclick="location.reload()">다시 시작</button>
+    </div>
+</div>
+
+<!-- Firebase SDK -->
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    // TODO: 아래 설정을 본인의 Firebase 프로젝트 설정으로 교체하세요.
+    const firebaseConfig = {
+  apiKey: "AIzaSyDAabpRr-hbvdLnwqiE7Q8phW2wrmUmhAA",
+  authDomain: "bufs-quiz-game.firebaseapp.com",
+  projectId: "bufs-quiz-game",
+  storageBucket: "bufs-quiz-game.firebasestorage.app",
+  messagingSenderId: "127942343346",
+  appId: "1:127942343346:web:1a2b89a91b94a58242a7ab",
+  measurementId: "G-KZXLWMF83L"
+};
+
+// Firebase 초기화
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+    // 퀴즈 데이터
+    const questions = [
+        { q: "부산외국어대학교의 영문 약칭은?", a: ["BUFS", "BFSU", "Pufs", "Busan-U"], c: 0 },
+        { q: "부산외국어대학교가 현재 위치한 동네는?", a: ["우암동", "남산동", "대연동", "장전동"], c: 1 },
+        { q: "올해(2026) 대동제는 어떤 색인가요?", a: ["빨간색", "초록색", "남색(Blue)", "보라색"], c: 0 },
+        { q: "부산외대 방송국의 이름은?", a: ["BBFS", "PUBS", "PFBS", "BFBS"], c: 3 },
+        { q: "부산외국어대학교의 개교 연도는?", a: ["1979년", "1982년", "1985년", "1991년"], c: 1 },
+        { q: "다음 중 부산외대에 없는 학과는?", a: ["이탈리아어과", "태국어과", "글로벌사범대학", "국제마케팅학과"], c: 2 },
+        { q: "부산외대 학생들을 부르는 별칭은?", a: ["외성인", "글로벌인", "부외인", "나래"], c: 0 }
+    ];
+
+    let currentIdx = 0;
+    let score = 0;
+    let canClick = true;
+
+    // 게임 시작 함수 (전역 스코프를 위해 window에 할당)
+    window.startGame = () => {
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('quiz-screen').classList.remove('hidden');
+        showQuestion();
+    };
+
+    function showQuestion() {
+        canClick = true;
+        const qData = questions[currentIdx];
+        document.getElementById('progress').innerText = `${currentIdx + 1}/${questions.length}`;
+        document.getElementById('current-score').innerText = `점수: ${score}`;
+        document.getElementById('question-text').innerText = qData.q;
+        
+        const optionsDiv = document.getElementById('options');
+        optionsDiv.innerHTML = '';
+        
+        qData.a.forEach((opt, index) => {
+            const btn = document.createElement('button');
+            btn.className = 'option-btn';
+            btn.innerText = opt;
+            btn.onclick = () => checkAnswer(index, btn);
+            optionsDiv.appendChild(btn);
+        });
+    }
+
+    function checkAnswer(selected, btn) {
+        if (!canClick) return;
+        canClick = false;
+
+        const correct = questions[currentIdx].c;
+        const allBtns = document.querySelectorAll('.option-btn');
+
+        if (selected === correct) {
+            btn.classList.add('correct');
+            score += 10;
+        } else {
+            btn.classList.add('wrong');
+            allBtns[correct].classList.add('correct');
+        }
+
+        setTimeout(() => {
+            currentIdx++;
+            if (currentIdx < questions.length) {
+                showQuestion();
+            } else {
+                showResult();
+            }
+        }, 1200);
+    }
+
+    function showResult() {
+        document.getElementById('quiz-screen').classList.add('hidden');
+        document.getElementById('result-screen').classList.remove('hidden');
+        document.getElementById('final-score').innerText = score;
+    }
+
+    // 데이터 저장
+    document.getElementById('save-btn').onclick = async () => {
+        const nickname = document.getElementById('nickname').value.trim();
+        if (!nickname) return alert('닉네임을 입력해주세요!');
+
+        try {
+            await addDoc(collection(db, "scores"), {
+                nickname: nickname,
+                score: score,
+                timestamp: serverTimestamp()
+            });
+            loadRankings();
+        } catch (e) {
+            console.error("Error adding document: ", e);
+            alert('점수 저장에 실패했습니다.');
+        }
+    };
+
+    async function loadRankings() {
+        document.getElementById('result-screen').classList.add('hidden');
+        document.getElementById('ranking-screen').classList.remove('hidden');
+        
+        const rankingList = document.getElementById('ranking-list');
+        rankingList.innerHTML = '<li>불러오는 중...</li>';
+
+        try {
+            const q = query(collection(db, "scores"), orderBy("score", "desc"), limit(5));
+            const querySnapshot = await getDocs(q);
+            rankingList.innerHTML = '';
+            
+            let rank = 1;
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                const li = document.createElement('li');
+                li.className = 'ranking-item';
+                li.innerHTML = `<span>${rank}. ${data.nickname}</span> <span>${data.score}점</span>`;
+                rankingList.appendChild(li);
+                rank++;
+            });
+        } catch (e) {
+            rankingList.innerHTML = '<li>랭킹을 불러올 수 없습니다.</li>';
+        }
+    }
+</script>
+</body>
+</html>
